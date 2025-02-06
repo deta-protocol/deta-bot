@@ -2102,13 +2102,13 @@ export const generateObject = async ({
         context = await trimTokens(context, max_context_length, runtime);
 
         const modelOptions: ModelSettings = {
-            prompt: context,
+                    prompt: context,
             temperature,
-            maxTokens: max_response_length,
-            frequencyPenalty: frequency_penalty,
-            presencePenalty: presence_penalty,
+                    maxTokens: max_response_length,
+                    frequencyPenalty: frequency_penalty,
+                    presencePenalty: presence_penalty,
             stop: stop || modelSettings.stop,
-            experimental_telemetry: experimental_telemetry,
+                    experimental_telemetry: experimental_telemetry,
         };
 
         const response = await handleProvider({
@@ -2170,9 +2170,6 @@ export async function handleProvider(
         runtime,
         context,
         modelClass,
-        //verifiableInference,
-        //verifiableInferenceAdapter,
-        //verifiableInferenceOptions,
     } = options;
     switch (provider) {
         case ModelProviderName.OPENAI:
@@ -2180,11 +2177,12 @@ export async function handleProvider(
         case ModelProviderName.ALI_BAILIAN:
         case ModelProviderName.VOLENGINE:
         case ModelProviderName.LLAMACLOUD:
-        case ModelProviderName.TOGETHER:
         case ModelProviderName.NANOGPT:
         case ModelProviderName.AKASH_CHAT_API:
         case ModelProviderName.LMSTUDIO:
             return await handleOpenAI(options);
+        case ModelProviderName.TOGETHER:
+            return await handleTogether(options);
         case ModelProviderName.ANTHROPIC:
         case ModelProviderName.CLAUDE_VERTEX:
             return await handleAnthropic(options);
@@ -2212,8 +2210,8 @@ export async function handleProvider(
             return await handleDeepSeek(options);
         case ModelProviderName.LIVEPEER:
             return await handleLivepeer(options);
-        default: {
-            const errorMessage = `Unsupported provider: ${provider}`;
+            default: {
+                const errorMessage = `Unsupported provider: ${provider}`;
             elizaLogger.error(errorMessage);
             throw new Error(errorMessage);
         }
@@ -2578,7 +2576,10 @@ export async function generateTweetActions({
     modelClass: ModelClass;
 }): Promise<ActionResponse | null> {
     let retryDelay = 1000;
-    while (true) {
+    const maxRetries = 3;
+    let retryCount = 0;
+
+    while (retryCount < maxRetries) {
         try {
             const response = await generateText({
                 runtime,
@@ -2610,5 +2611,39 @@ export async function generateTweetActions({
         elizaLogger.log(`Retrying in ${retryDelay}ms...`);
         await new Promise((resolve) => setTimeout(resolve, retryDelay));
         retryDelay *= 2;
+        retryCount++;
     }
+
+    return null;
+}
+
+/**
+ * Handles object generation for Together AI models.
+ *
+ * @param {ProviderOptions} options - Options specific to Together AI.
+ * @returns {Promise<GenerateObjectResult<unknown>>} - A promise that resolves to generated objects.
+ */
+async function handleTogether({
+    model,
+    apiKey,
+    schema,
+    schemaName,
+    schemaDescription,
+    mode = "json",
+    modelOptions,
+    runtime,
+}: ProviderOptions): Promise<GenerateObjectResult<unknown>> {
+    elizaLogger.debug("Handling Together AI request");
+    const baseURL = getCloudflareGatewayBaseURL(runtime, "together") || models.together.endpoint;
+    elizaLogger.debug("Together AI baseURL:", { baseURL });
+
+    const together = createOpenAI({ apiKey, baseURL });
+    return await aiGenerateObject({
+        model: together.languageModel(model),
+        schema,
+        schemaName,
+        schemaDescription,
+        mode,
+        ...modelOptions,
+    });
 }
